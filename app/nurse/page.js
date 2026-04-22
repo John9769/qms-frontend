@@ -93,6 +93,54 @@ export default function NurseDashboard() {
     marginBottom: '10px'
   });
 
+  const renderTicketCard = (ticket, color) => (
+    <div key={ticket.id} style={cardStyle(color)}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ color, fontSize: '18px', fontWeight: '800' }}>{ticket.ticket_code}</div>
+            {ticket.series === 'A' && (
+              <div style={{ background: '#7c3aed', color: '#fff', fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px' }}>
+                APPOINTMENT
+              </div>
+            )}
+          </div>
+          <div style={{ color: '#f8fafc', fontSize: '14px' }}>{ticket.patient_name}</div>
+          {ticket.is_first_visit && (
+            <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '2px' }}>
+              {ticket.verification_status === 'EMR_READY' ? '✅ EMR Ready' : '⏳ Awaiting EMR'}
+            </div>
+          )}
+          {ticket.status === 'PENDING' && ticket.eta && (
+            <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>
+              ETA: {new Date(ticket.eta).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' })}
+            </div>
+          )}
+          {ticket.series === 'A' && ticket.appointment_date && (
+            <div style={{ color: '#a78bfa', fontSize: '11px', marginTop: '2px' }}>
+              📅 Doctor appointment
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+          {ticket.status === 'CALLED' && (
+            <button onClick={() => handleServe(ticket.id)} style={{ background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+              Done ✓
+            </button>
+          )}
+          {ticket.is_first_visit && ticket.verification_status !== 'EMR_READY' && ticket.status === 'ARRIVED' && (
+            <button onClick={() => handleEMRReady(ticket.id)} style={{ background: '#fbbf24', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+              EMR Ready
+            </button>
+          )}
+          {ticket.status === 'PENDING' && (
+            <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: '600' }}>PENDING</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   if (!token) return (
     <div style={{ maxWidth: '480px', margin: '0 auto', padding: '24px 16px', minHeight: '100vh', background: '#0f172a' }}>
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -137,8 +185,26 @@ export default function NurseDashboard() {
     </div>
   );
 
+  // Split S and A series
+  const allTickets = [
+    ...(dashboard?.arrived || []),
+    ...(dashboard?.pending || []),
+    ...(dashboard?.called || [])
+  ];
+
+  const sArrived = (dashboard?.arrived || []).filter(t => t.series === 'S');
+  const sPending = (dashboard?.pending || []).filter(t => t.series === 'S');
+  const sCalled = (dashboard?.called || []).filter(t => t.series === 'S');
+
+  const aArrived = (dashboard?.arrived || []).filter(t => t.series === 'A');
+  const aPending = (dashboard?.pending || []).filter(t => t.series === 'A');
+  const aCalled = (dashboard?.called || []).filter(t => t.series === 'A');
+
+  const hasAny = allTickets.length > 0;
+
   return (
     <div style={{ maxWidth: '480px', margin: '0 auto', padding: '16px', minHeight: '100vh', background: '#0f172a' }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
           <h1 style={{ color: '#38bdf8', fontSize: '18px', fontWeight: '800', margin: 0 }}>
@@ -155,6 +221,7 @@ export default function NurseDashboard() {
 
       {error && <div style={{ background: '#450a0a', color: '#fca5a5', padding: '12px', borderRadius: '10px', marginBottom: '16px', fontSize: '13px' }}>{error}</div>}
 
+      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
         {[
           { label: 'Arrived', value: dashboard?.stats?.total_arrived || 0, color: '#22c55e' },
@@ -168,6 +235,7 @@ export default function NurseDashboard() {
         ))}
       </div>
 
+      {/* Auto-selected next to call */}
       {dashboard?.next_to_call && (
         <div style={{ background: '#052e16', border: '2px solid #22c55e', borderRadius: '16px', padding: '20px', marginBottom: '20px', textAlign: 'center' }}>
           <div style={{ color: '#86efac', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>
@@ -179,8 +247,13 @@ export default function NurseDashboard() {
           <div style={{ color: '#f8fafc', fontSize: '16px', fontWeight: '600', marginTop: '4px' }}>
             {dashboard.next_to_call.patient_name}
           </div>
+          {dashboard.next_to_call.series === 'A' && (
+            <div style={{ color: '#a78bfa', fontSize: '12px', marginTop: '4px' }}>
+              📅 Doctor Appointment
+            </div>
+          )}
           {dashboard.next_to_call.is_first_visit && (
-            <div style={{ color: '#fbbf24', fontSize: '12px', marginTop: '8px' }}>
+            <div style={{ color: '#fbbf24', fontSize: '12px', marginTop: '4px' }}>
               ⚠️ First Visit — EMR Ready confirmed
             </div>
           )}
@@ -193,72 +266,71 @@ export default function NurseDashboard() {
         </div>
       )}
 
-      {dashboard?.called?.length > 0 && (
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ color: '#38bdf8', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '10px' }}>In Consultation</h3>
-          {dashboard.called.map(ticket => (
-            <div key={ticket.id} style={cardStyle('#38bdf8')}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ color: '#38bdf8', fontSize: '20px', fontWeight: '800' }}>{ticket.ticket_code}</div>
-                  <div style={{ color: '#f8fafc', fontSize: '14px' }}>{ticket.patient_name}</div>
-                </div>
-                <button onClick={() => handleServe(ticket.id)} style={{ background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                  Done ✓
-                </button>
-              </div>
-            </div>
-          ))}
+      {/* ===== S SERIES SECTION ===== */}
+      <div style={{ borderLeft: '3px solid #38bdf8', paddingLeft: '12px', marginBottom: '8px' }}>
+        <h3 style={{ color: '#38bdf8', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', margin: 0 }}>
+          S Series — Walk-in Bookings
+        </h3>
+      </div>
+
+      {sCalled.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#38bdf8', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>In Consultation</p>
+          {sCalled.map(t => renderTicketCard(t, '#38bdf8'))}
         </div>
       )}
 
-      {dashboard?.arrived?.length > 0 && (
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ color: '#22c55e', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '10px' }}>Arrived — Waiting</h3>
-          {dashboard.arrived.map(ticket => (
-            <div key={ticket.id} style={cardStyle('#22c55e')}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ color: '#22c55e', fontSize: '18px', fontWeight: '800' }}>{ticket.ticket_code}</div>
-                  <div style={{ color: '#f8fafc', fontSize: '14px' }}>{ticket.patient_name}</div>
-                  {ticket.is_first_visit && (
-                    <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '2px' }}>
-                      {ticket.verification_status === 'EMR_READY' ? '✅ EMR Ready' : '⏳ Awaiting EMR'}
-                    </div>
-                  )}
-                </div>
-                {ticket.is_first_visit && ticket.verification_status !== 'EMR_READY' && (
-                  <button onClick={() => handleEMRReady(ticket.id)} style={{ background: '#fbbf24', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                    EMR Ready
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+      {sArrived.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#22c55e', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Arrived — Waiting</p>
+          {sArrived.map(t => renderTicketCard(t, '#22c55e'))}
         </div>
       )}
 
-      {dashboard?.pending?.length > 0 && (
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ color: '#fbbf24', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '10px' }}>Pending — Not Yet Arrived</h3>
-          {dashboard.pending.map(ticket => (
-            <div key={ticket.id} style={cardStyle('#fbbf24')}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ color: '#fbbf24', fontSize: '18px', fontWeight: '800' }}>{ticket.ticket_code}</div>
-                  <div style={{ color: '#f8fafc', fontSize: '14px' }}>{ticket.patient_name}</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>
-                    ETA: {ticket.eta ? new Date(ticket.eta).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' }) : 'N/A'}
-                  </div>
-                </div>
-                <div style={{ color: '#fbbf24', fontSize: '11px', fontWeight: '600' }}>PENDING</div>
-              </div>
-            </div>
-          ))}
+      {sPending.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#fbbf24', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Pending — Not Yet Arrived</p>
+          {sPending.map(t => renderTicketCard(t, '#fbbf24'))}
         </div>
       )}
 
-      {!dashboard?.next_to_call && dashboard?.stats?.total_arrived === 0 && dashboard?.stats?.total_pending === 0 && (
+      {sCalled.length === 0 && sArrived.length === 0 && sPending.length === 0 && (
+        <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0', marginBottom: '16px' }}>No S series patients today.</div>
+      )}
+
+      {/* ===== A SERIES SECTION ===== */}
+      <div style={{ borderLeft: '3px solid #a78bfa', paddingLeft: '12px', marginBottom: '8px', marginTop: '8px' }}>
+        <h3 style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', margin: 0 }}>
+          A Series — Doctor Appointments
+        </h3>
+      </div>
+
+      {aCalled.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#38bdf8', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>In Consultation</p>
+          {aCalled.map(t => renderTicketCard(t, '#38bdf8'))}
+        </div>
+      )}
+
+      {aArrived.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#22c55e', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Arrived — Waiting</p>
+          {aArrived.map(t => renderTicketCard(t, '#22c55e'))}
+        </div>
+      )}
+
+      {aPending.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#a78bfa', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Appointments — Pending Arrival</p>
+          {aPending.map(t => renderTicketCard(t, '#a78bfa'))}
+        </div>
+      )}
+
+      {aCalled.length === 0 && aArrived.length === 0 && aPending.length === 0 && (
+        <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0', marginBottom: '16px' }}>No appointments today.</div>
+      )}
+
+      {!hasAny && (
         <div style={{ textAlign: 'center', padding: '40px', color: '#475569' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏥</div>
           <div>No patients in queue</div>
