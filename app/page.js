@@ -6,6 +6,7 @@ import BookingConfirm from '../components/BookingConfirm';
 import { triggerGeofence } from '../lib/api';
 
 const GEOFENCE_RADIUS = 50;
+const DEV_MODE = true; // Set to false before production
 
 function getDistanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -40,11 +41,11 @@ export default function Home() {
   const [distance, setDistance] = useState(null);
   const [geofenced, setGeofenced] = useState(false);
   const [geofenceError, setGeofenceError] = useState('');
+  const [simulating, setSimulating] = useState(false);
   const watchRef = useRef(null);
   const bookingRef = useRef(null);
   const geofencedRef = useRef(false);
 
-  // Keep refs in sync
   useEffect(() => { bookingRef.current = booking; }, [booking]);
   useEffect(() => { geofencedRef.current = geofenced; }, [geofenced]);
 
@@ -97,6 +98,28 @@ export default function Home() {
     };
   }, [step]);
 
+  // DEV MODE — simulate geofence trigger
+  const simulateArrival = async () => {
+    if (!booking || geofencedRef.current) return;
+    setSimulating(true);
+    try {
+      await triggerGeofence({
+        ticket_id: booking.id,
+        lat: parseFloat(booking.hospital_lat),
+        lng: parseFloat(booking.hospital_lng),
+        distance_meters: 10
+      });
+      geofencedRef.current = true;
+      setGeofenced(true);
+      setDistance(10);
+      if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current);
+    } catch (err) {
+      setGeofenceError(err.response?.data?.error || 'Simulate failed');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   const resetAll = () => {
     if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current);
     setStep(1);
@@ -121,6 +144,11 @@ export default function Home() {
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <h1 style={{ color: '#38bdf8', fontSize: '24px', fontWeight: '800', margin: 0 }}>QMS</h1>
         <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>Queue Management System</p>
+        {DEV_MODE && (
+          <div style={{ background: '#451a03', color: '#fbbf24', fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', display: 'inline-block', marginTop: '4px' }}>
+            DEV MODE
+          </div>
+        )}
       </div>
 
       {step < 4 && (
@@ -241,6 +269,28 @@ export default function Home() {
                       {distance <= GEOFENCE_RADIUS ? '✅ Checking you in...' : `Auto check-in within ${GEOFENCE_RADIUS}m`}
                     </div>
                   </>
+                )}
+
+                {/* DEV MODE — Simulate Arrival */}
+                {DEV_MODE && (
+                  <button
+                    onClick={simulateArrival}
+                    disabled={simulating}
+                    style={{
+                      marginTop: '16px',
+                      background: '#7c3aed',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '10px 20px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      width: '100%'
+                    }}
+                  >
+                    {simulating ? 'Simulating...' : '🧪 DEV — Simulate Arrival'}
+                  </button>
                 )}
               </div>
 
